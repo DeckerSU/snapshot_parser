@@ -5,15 +5,13 @@
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
+#include "rapidjson/reader.h"
+#include "rapidjson/filereadstream.h"
 
 #include "utilstrencodings.h"
 #include "tinyformat.h"
 
 using namespace rapidjson;
-
-inline void Ok() {
-    std::cout << "Ok!" << std::endl;
-}
 
 typedef int64_t CAmount;
 
@@ -45,16 +43,30 @@ int main() {
     Document d;
     std::map<std::string, uint64_t> mapBalances;
     
-    const char* test_json = "{\r\n        \"start_time\": 1581881335,\r\n        \"total\": 118392445.7801656,\r\n        \"average\": 1868.479159762006,\r\n        \"utxos\": 5685857,\r\n        \"total_addresses\": 63363,\r\n        \"ignored_addresses\": 31,\r\n        \"skipped_cc_utxos\": 0,\r\n        \"cc_utxo_value\": 0,\r\n        \"total_includeCCvouts\": 118392445.7801656,\r\n        \"ending_height\": 1752448,\r\n        \"addresses\": [\r\n            {\r\n            \"addr\": \"RLVzC4tr9cNKvuw2z4m8KuMfZURwCehx55\",\r\n            \"amount\": \"12419161.52338626\",\r\n            \"segid\": 27\r\n            },\r\n            {\r\n            \"addr\": \"RD8rqsm6RroQWe1cP45FvNNYJNT6Xsuvqj\",\r\n            \"amount\": \"0.00000054\",\r\n            \"segid\": 17\r\n            }\r\n        ],\r\n        \"end_time\": 1581881976\r\n    }";
-    
-    if (d.Parse(test_json).HasParseError()) {
-        std::cerr << "JSON parse error. Exiting." << std::endl;
+    // Prepare JSON reader and input stream.
+    FILE *fp = fopen("snapshot.json", "r");
+    if (!fp) {
+        std::cerr << "Can't find snapshot.json. Exiting." << std::endl;
+        return -1;
     }
+    
+    Reader reader;
+    char readBuffer[65536];
+    FileReadStream is(fp /*stdin*/, readBuffer, sizeof(readBuffer));
+
+    if (d.ParseStream(is).HasParseError()) {
+        std::cerr << "JSON parse error. Exiting." << std::endl;
+        fclose(fp);
+        return -1;
+    }
+
     // https://github.com/Tencent/rapidjson/blob/master/example/tutorial/tutorial.cpp
+    int64_t totalAddressesInJson = 0;
     if (d.HasMember("addresses") && d["addresses"].IsArray()) {
         const Value& a = d["addresses"];
-        std::cout << "Parsing " << a.Size() << " adresses ..." << std::endl;
-        for (SizeType i = 0; i < a.Size(); i++) {
+        totalAddressesInJson = a.Size();
+        std::cerr << "Parsing " << totalAddressesInJson << " adresses - ";
+        for (SizeType i = 0; i < totalAddressesInJson; i++) {
             if (a[i].IsObject()) {
                 const Value& el = a[i];
                 if (el.HasMember("addr") && el.HasMember("amount")) {
@@ -67,7 +79,12 @@ int main() {
 
     }
 
-    std::cout << "Parsed " << mapBalances.size() << " addresses" << std::endl;
+    if (totalAddressesInJson != mapBalances.size()) {
+        std::cerr << "only " << mapBalances.size() << " valid! Exiting." << std::endl;
+        return -1;
+    }
+
+    std::cerr << "Ok!" << std::endl;
     
     // https://stackoverflow.com/questions/6963894/how-to-use-range-based-for-loop-with-stdmap
     
@@ -76,14 +93,12 @@ int main() {
        //std::cout << kv.first << " has " << ValueFromAmount(kv.second) << std::endl;
        total += kv.second;
     }
-    std::cout << "Total: " << ValueFromAmount(total) << " COIN" << std::endl;
+    std::cout << "Total: " << ValueFromAmount(total) << std::endl;
 
-    StringBuffer buffer;
+    /* StringBuffer buffer;
     Writer<StringBuffer> writer(buffer);
     d.Accept(writer);
-    std::cout << buffer.GetString() << std::endl;
-
-
+    std::cout << buffer.GetString() << std::endl; */
 
     return 0;
 }
