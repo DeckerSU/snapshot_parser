@@ -14,11 +14,14 @@
 using namespace rapidjson;
 
 typedef int64_t CAmount;
+typedef std::vector< std::pair <std::string, CAmount> > CSendManyOutput;
 
 static const CAmount COIN = 100000000;
 static const CAmount CENT = 1000000;
 
 static const CAmount MAX_MONEY = 21000000 * COIN;
+static const std::size_t MAX_SENDMANY_OUTPUTS = 10;
+
 inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 
 int64_t AmountFromValue(const rapidjson::Value &value) {
@@ -36,6 +39,21 @@ std::string ValueFromAmount(const CAmount& amount)
     int64_t quotient = n_abs / COIN;
     int64_t remainder = n_abs % COIN;
     return strprintf("%s%d.%08d", sign ? "-" : "", quotient, remainder);
+}
+
+void PrintSendManyCli(const CSendManyOutput &vec, int64_t txcount) {
+    
+    static const int64_t confirmations = 0;
+    if (vec.size() > 0) {
+        std::cout << "./komodo-cli -ac_name=VOTE2020 sendmany \"\" \"{";
+        for (CSendManyOutput::const_iterator iter = vec.begin(); iter != vec.end(); ++iter)
+	    {
+            // https://stackoverflow.com/questions/3516196/testing-whether-an-iterator-points-to-the-last-item
+            if ((*iter).second > 0)
+                std::cout << "\\\"" << (*iter).first << "\\\":\\\"" << ValueFromAmount((*iter).second) << "\\\"" << ((std::distance( iter, vec.end() ) != 1) ? "," : "");
+        }
+        std::cout << "}\" " << confirmations << " \"tx." << txcount << "\"" << std::endl;
+    }
 }
 
 int main() {
@@ -88,17 +106,54 @@ int main() {
     
     // https://stackoverflow.com/questions/6963894/how-to-use-range-based-for-loop-with-stdmap
     
-    CAmount total;
+    CAmount total; int64_t txcount = 0, outcount = 0;
+    CSendManyOutput vSendManyOutput;
+
     for (const auto& kv : mapBalances) {
-       //std::cout << kv.first << " has " << ValueFromAmount(kv.second) << std::endl;
+       
+       if (vSendManyOutput.size() == MAX_SENDMANY_OUTPUTS) {
+           // output komodo-cli sendmany
+           txcount++; outcount += vSendManyOutput.size();
+           PrintSendManyCli(vSendManyOutput, txcount);
+           vSendManyOutput.clear();
+       }
+       //vSendManyOutput.push_back( std::make_pair(kv.first, kv.second) );
+       vSendManyOutput.emplace_back(kv.first, kv.second);
        total += kv.second;
     }
-    std::cout << "Total: " << ValueFromAmount(total) << std::endl;
 
-    /* StringBuffer buffer;
-    Writer<StringBuffer> writer(buffer);
-    d.Accept(writer);
-    std::cout << buffer.GetString() << std::endl; */
+    if (vSendManyOutput.size() > 0) {
+        txcount++; outcount += vSendManyOutput.size();
+        PrintSendManyCli(vSendManyOutput,txcount);
+    }
+    
+    std::cerr << "Total: " << ValueFromAmount(total) << " coins sent to " << outcount << " addresses in " << txcount << " txes." << std::endl;
+
+    /* {
+        // Example of how to construct a JSON string
+        Document jSendMany;
+        Document::AllocatorType& a = jSendMany.GetAllocator();
+        Value jParams, jAmounts;
+        // {"jsonrpc": "1.0", "id":"curltest", "method": "sendmany", "params": ["", {"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPVMY":0.01,"RRyyejME7LRTuvdziWsXkAbSW1fdiohGwK":0.02}, 6, "testing"] }
+        jSendMany.SetObject();
+        jSendMany.AddMember("jsonrpc", "1.0", a);
+        jSendMany.AddMember("id", "curltest", a);
+        jSendMany.AddMember("method", "sendmany", a);
+        jAmounts.SetObject();
+        
+        jParams.SetArray().PushBack("", a).PushBack(jAmounts,a); 
+        jParams.PushBack(1, a); // minconf
+        jParams.PushBack("testing",a); // comment
+
+        jSendMany.AddMember("params",jParams,a);
+
+        StringBuffer buffer;
+        Writer<StringBuffer> writer(buffer);
+        // writer.SetMaxDecimalPlaces(8); // https://github.com/Tencent/rapidjson/pull/536
+        jSendMany.Accept(writer);
+        std::cout << buffer.GetString() << std::endl; 
+           
+    } */
 
     return 0;
 }
