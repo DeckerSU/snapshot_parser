@@ -22,6 +22,14 @@
 
 using namespace rapidjson;
 
+/* changeable params */
+static const std::size_t MAX_SENDMANY_OUTPUTS = 10;
+static const bool useExtendedScript = false;
+static const std::set<std::string> setExcludeAddresses = {
+    "RBatmanSuperManPaddingtonBearpcCTt",
+    };
+
+/* below is no user changeable params */
 typedef int64_t CAmount;
 typedef std::pair<std::string, CAmount> CBalanceRecord;
 typedef std::vector< CBalanceRecord > CSendManyOutput;
@@ -30,7 +38,6 @@ static const CAmount COIN = 100000000;
 static const CAmount CENT = 1000000;
 
 static const CAmount MAX_MONEY = 21000000 * COIN;
-static const std::size_t MAX_SENDMANY_OUTPUTS = 10;
 
 inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 
@@ -126,7 +133,7 @@ int main()
     std::cerr << "Ok!" << std::endl;
 
     // need to sort map by amounts before iterate
-    CAmount total; int64_t txcount = 0, outcount = 0;
+    CAmount total = 0, total_skipped = 0; int64_t txcount = 0, outcount = 0;
     CSendManyOutput vSendManyOutput;
 
     typedef std::function<bool(CBalanceRecord, CBalanceRecord)> Comparator;
@@ -157,20 +164,26 @@ int main()
        if (vSendManyOutput.size() == MAX_SENDMANY_OUTPUTS) {
            // output komodo-cli sendmany
            txcount++; outcount += vSendManyOutput.size();
-           PrintSendManyCli(std::cout, vSendManyOutput, txcount, false);
+           PrintSendManyCli(std::cout, vSendManyOutput, txcount, useExtendedScript);
            vSendManyOutput.clear();
        }
        //vSendManyOutput.push_back( std::make_pair(kv.first, kv.second) );
-       vSendManyOutput.emplace_back(kv.first, kv.second);
-       total += kv.second;
+       if (!setExcludeAddresses.count(kv.first)) {
+           vSendManyOutput.emplace_back(kv.first, kv.second);
+           total += kv.second;
+       }
+       else
+        total_skipped += kv.second;
     }
 
     if (vSendManyOutput.size() > 0) {
         txcount++; outcount += vSendManyOutput.size();
-        PrintSendManyCli(std::cout, vSendManyOutput,txcount, false);
+        PrintSendManyCli(std::cout, vSendManyOutput,txcount, useExtendedScript);
     }
     
-    std::cerr << "Total: " << ValueFromAmount(total) << " coins sent to " << outcount << " addresses in " << txcount << " txes." << std::endl;
+    std::cerr << "Total: " << std::endl;
+    std::cerr << "------ " << ValueFromAmount(total) << " coins sent to " << outcount << " addresses in " << txcount << " txes." << std::endl;
+    std::cerr << "------ " << ValueFromAmount(total_skipped) << " coins filtered (skipped) from " << setExcludeAddresses.size() << " addresses." << std::endl;
 
     return 0;
 }
