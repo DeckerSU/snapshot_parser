@@ -1,6 +1,9 @@
 #include <iostream>
 #include <stdint.h>
 #include <map>
+#include <set>
+#include <algorithm>
+#include <functional>
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -14,7 +17,8 @@
 using namespace rapidjson;
 
 typedef int64_t CAmount;
-typedef std::vector< std::pair <std::string, CAmount> > CSendManyOutput;
+typedef std::pair<std::string, CAmount> CBalanceRecord;
+typedef std::vector< CBalanceRecord > CSendManyOutput;
 
 static const CAmount COIN = 100000000;
 static const CAmount CENT = 1000000;
@@ -59,7 +63,7 @@ void PrintSendManyCli(const CSendManyOutput &vec, int64_t txcount) {
 int main() {
 
     Document d;
-    std::map<std::string, uint64_t> mapBalances;
+    std::map<std::string, int64_t> mapBalances;
     
     // Prepare JSON reader and input stream.
     FILE *fp = fopen("snapshot.json", "r");
@@ -105,12 +109,38 @@ int main() {
     std::cerr << "Ok!" << std::endl;
     
     // https://stackoverflow.com/questions/6963894/how-to-use-range-based-for-loop-with-stdmap
-    
+    // https://thispointer.com/how-to-sort-a-map-by-value-in-c/
+
+    // need to sort map by amounts before iterate
+
     CAmount total; int64_t txcount = 0, outcount = 0;
     CSendManyOutput vSendManyOutput;
 
-    for (const auto& kv : mapBalances) {
-       
+    typedef std::function<bool(CBalanceRecord, CBalanceRecord)> Comparator;
+    // Defining a lambda function to compare two pairs. 
+    Comparator compFunctor =
+        [](CBalanceRecord elem1, CBalanceRecord elem2)
+        {
+            //return (elem1.second > elem2.second);
+            
+            // First sort by balance ...
+            if (elem1.second > elem2.second) return true;
+            if (elem1.second < elem2.second) return false;
+            // ... then by address, ...
+            if (elem1.first > elem2.first) return true;
+            if (elem1.first < elem2.first) return false;
+
+        };
+
+    // Declaring a set that will store the pairs using above comparision logic
+    std::set<CBalanceRecord, Comparator> setOfBalances(
+            mapBalances.begin(), mapBalances.end(), compFunctor);
+    
+    assert(mapBalances.size() == setOfBalances.size());
+
+    //for (const auto& kv : mapBalances) {
+    for (const CBalanceRecord& kv : setOfBalances) {
+
        if (vSendManyOutput.size() == MAX_SENDMANY_OUTPUTS) {
            // output komodo-cli sendmany
            txcount++; outcount += vSendManyOutput.size();
