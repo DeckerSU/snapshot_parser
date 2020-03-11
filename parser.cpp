@@ -45,18 +45,18 @@ std::string ValueFromAmount(const CAmount& amount)
     return strprintf("%s%d.%08d", sign ? "-" : "", quotient, remainder);
 }
 
-void PrintSendManyCli(const CSendManyOutput &vec, int64_t txcount) {
+void PrintSendManyCli(std::ostream& ostr, const CSendManyOutput &vec, int64_t txcount, bool fProduceScriptEx = false) {
     
     static const int64_t confirmations = 0;
     if (vec.size() > 0) {
-        std::cout << "./komodo-cli -ac_name=VOTE2020 sendmany \"\" \"{";
+        ostr << "./komodo-cli -ac_name=VOTE2020 sendmany \"\" \"{";
         for (CSendManyOutput::const_iterator iter = vec.begin(); iter != vec.end(); ++iter)
 	    {
             // https://stackoverflow.com/questions/3516196/testing-whether-an-iterator-points-to-the-last-item
             if ((*iter).second > 0)
-                std::cout << "\\\"" << (*iter).first << "\\\":\\\"" << ValueFromAmount((*iter).second) << "\\\"" << ((std::distance( iter, vec.end() ) != 1) ? "," : "");
+                ostr << "\\\"" << (*iter).first << "\\\":\\\"" << ValueFromAmount((*iter).second) << "\\\"" << ((std::distance( iter, vec.end() ) != 1) ? "," : "");
         }
-        std::cout << "}\" " << confirmations << " \"tx." << txcount << "\"" << std::endl;
+        ostr << "}\" " << confirmations << " \"tx." << txcount << "\"" << std::endl;
     }
 }
 
@@ -144,7 +144,7 @@ int main() {
        if (vSendManyOutput.size() == MAX_SENDMANY_OUTPUTS) {
            // output komodo-cli sendmany
            txcount++; outcount += vSendManyOutput.size();
-           PrintSendManyCli(vSendManyOutput, txcount);
+           PrintSendManyCli(std::cout, vSendManyOutput, txcount);
            vSendManyOutput.clear();
        }
        //vSendManyOutput.push_back( std::make_pair(kv.first, kv.second) );
@@ -154,7 +154,7 @@ int main() {
 
     if (vSendManyOutput.size() > 0) {
         txcount++; outcount += vSendManyOutput.size();
-        PrintSendManyCli(vSendManyOutput,txcount);
+        PrintSendManyCli(std::cout, vSendManyOutput,txcount);
     }
     
     std::cerr << "Total: " << ValueFromAmount(total) << " coins sent to " << outcount << " addresses in " << txcount << " txes." << std::endl;
