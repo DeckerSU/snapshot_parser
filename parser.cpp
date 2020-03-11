@@ -49,6 +49,9 @@ void PrintSendManyCli(std::ostream& ostr, const CSendManyOutput &vec, int64_t tx
     
     static const int64_t confirmations = 0;
     if (vec.size() > 0) {
+        if (fProduceScriptEx) {
+            ostr << "while true; do" << std::endl << "echo -e \"Executing tx \x1b[01;32m#"<< txcount << "\x1B[0m ... \"" << std::endl;
+        }
         ostr << "./komodo-cli -ac_name=VOTE2020 sendmany \"\" \"{";
         for (CSendManyOutput::const_iterator iter = vec.begin(); iter != vec.end(); ++iter)
 	    {
@@ -57,6 +60,14 @@ void PrintSendManyCli(std::ostream& ostr, const CSendManyOutput &vec, int64_t tx
                 ostr << "\\\"" << (*iter).first << "\\\":\\\"" << ValueFromAmount((*iter).second) << "\\\"" << ((std::distance( iter, vec.end() ) != 1) ? "," : "");
         }
         ostr << "}\" " << confirmations << " \"tx." << txcount << "\"" << std::endl;
+        if (fProduceScriptEx) {
+            ostr << "    if [ $? -eq 0 ]; then" << std::endl;
+            ostr << "    break" << std::endl;
+            ostr << "    fi" << std::endl;
+            ostr << "    sleep 1" << std::endl;
+            ostr << "done" << std::endl;
+            ostr << std::endl;
+        }
     }
 }
 
@@ -144,7 +155,7 @@ int main() {
        if (vSendManyOutput.size() == MAX_SENDMANY_OUTPUTS) {
            // output komodo-cli sendmany
            txcount++; outcount += vSendManyOutput.size();
-           PrintSendManyCli(std::cout, vSendManyOutput, txcount);
+           PrintSendManyCli(std::cout, vSendManyOutput, txcount, true);
            vSendManyOutput.clear();
        }
        //vSendManyOutput.push_back( std::make_pair(kv.first, kv.second) );
@@ -154,7 +165,7 @@ int main() {
 
     if (vSendManyOutput.size() > 0) {
         txcount++; outcount += vSendManyOutput.size();
-        PrintSendManyCli(std::cout, vSendManyOutput,txcount);
+        PrintSendManyCli(std::cout, vSendManyOutput,txcount, true);
     }
     
     std::cerr << "Total: " << ValueFromAmount(total) << " coins sent to " << outcount << " addresses in " << txcount << " txes." << std::endl;
