@@ -457,7 +457,7 @@ bool ParseFixedPoint(const std::string &val, int decimals, int64_t *amount_out)
             }
         } else return false; /* missing expected digit */
     } else return false; /* empty string or loose '-' */
-    if (ptr < end && val[ptr] == '.')
+    if (ptr < end && (val[ptr] == '.' || val[ptr] == ','))
     {
         ++ptr;
         if (ptr < end && val[ptr] >= '0' && val[ptr] <= '9')

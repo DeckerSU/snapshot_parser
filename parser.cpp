@@ -37,7 +37,7 @@ typedef std::vector< CBalanceRecord > CSendManyOutput;
 static const CAmount COIN = 100000000;
 static const CAmount CENT = 1000000;
 
-static const CAmount MAX_MONEY = 21000000 * COIN;
+static const CAmount MAX_MONEY = 200000000 * 100000000LL /*21000000 * COIN*/;
 
 inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 
