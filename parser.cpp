@@ -149,7 +149,8 @@ int main()
             // ... then by address, ...
             if (elem1.first > elem2.first) return true;
             if (elem1.first < elem2.first) return false;
-
+            // identical elements.
+            return false;
         };
 
     // Declaring a set that will store the pairs using above comparision logic
