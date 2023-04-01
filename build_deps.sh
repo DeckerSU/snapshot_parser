@@ -7,7 +7,7 @@ then
 mkdir $curdir/depends
 mkdir $curdir/depends_build
 cd $curdir/depends
-git clone -b version5 https://github.com/libbitcoin/secp256k1
+git clone -b version8 https://github.com/libbitcoin/secp256k1
 cd $curdir/depends/secp256k1
 ./autogen.sh
 ./configure --enable-module-recovery --prefix=$curdir/depends_build # --enable-static 
@@ -16,7 +16,9 @@ make install
 cd $curdir/depends
 git clone https://github.com/libbitcoin/libbitcoin
 cd $curdir/depends/libbitcoin
-sed -i 's/1.62.0/1.58.0/g' configure.ac 
+git checkout 342180610974270bfc7c559442957d93cd9f74bf
+
+#sed -i 's/1.76.0/1.74.0/g' configure.ac 
 ./autogen.sh
 # --enable-static --disable-shared 
 secp256k1_LIBS="-L$curdir/depends_build/lib -lsecp256k1 -lgmp" secp256k1_CFLAGS=-I$curdir/depends_build/include ./configure --prefix=$curdir/depends_build

