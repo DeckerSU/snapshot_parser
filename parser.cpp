@@ -1,6 +1,6 @@
 /***
  *
- *  Komodo Bruter (c) Decker, 2020-2022
+ *  Komodo Bruter (c) Decker, 2020-2024
  *
 */
 
@@ -281,25 +281,40 @@ int main()
     // worker(std::begin(setPasswords), std::end(setPasswords));
     // std::cout << std::accumulate(std::begin(setPasswords), std::end(setPasswords), 0) << std::endl;
 
-    // parallel
-    const int max_threads = 8;
-    std::vector<std::thread> threads(max_threads);
-    int grainsize = setPasswords.size() / max_threads;
+    // int count = std::count(setPasswords.begin(), setPasswords.end(), "as");
+    // std::cout << "Number of occurrences of 'as': " << count << std::endl;
 
-    auto work_iter = std::begin(setPasswords);
-    for(auto it = std::begin(threads); it != std::end(threads) - 1; ++it) {
-        // std::cout << "[" << *work_iter << " ; " << *(work_iter + grainsize) << "]" << std::endl;
-        auto work_iter_end = work_iter;
-        std::advance(work_iter_end, grainsize);
-        // *it = std::thread(worker, work_iter, work_iter + grainsize);
-        *it = std::thread(worker, work_iter, work_iter_end);
-        //work_iter += grainsize;
-        std::advance(work_iter, grainsize);
+    // Determine the number of threads to use
+    const unsigned int max_threads = std::thread::hardware_concurrency();
+    // Fallback to 4 threads if hardware_concurrency can't determine
+    const unsigned int num_threads = max_threads > 0 ? max_threads : 4;
+
+     // Prepare a vector to hold thread objects
+    std::vector<std::thread> threads;
+    threads.reserve(num_threads);
+
+    size_t total = setPasswords.size();
+    size_t grainsize = total / max_threads;
+    size_t remainder = total % max_threads;
+
+    auto work_iter = setPasswords.begin();
+
+    for(int i = 0; i < num_threads; ++i) {
+        // Calculate the start and end for each thread
+        auto start_iter = work_iter;
+        size_t current_grainsize = grainsize + (i < remainder ? 1 : 0); // Distribute the remainder
+        std::advance(work_iter, current_grainsize);
+        auto end_iter = work_iter;
+
+        // Launch the thread with its specific range
+        threads.emplace_back(worker, start_iter, end_iter);
     }
-    threads.back() = std::thread(worker, work_iter, std::end(setPasswords));
 
-    for(auto&& i : threads) {
-        i.join();
+    // Join all threads to ensure completion before exiting the function
+    for(auto& thread : threads) {
+        if(thread.joinable()) {
+            thread.join();
+        }
     }
 
     // std::cout << std::accumulate(std::begin(setPasswords), std::end(setPasswords), 0) << std::endl;
