@@ -290,6 +290,7 @@ int main()
     const unsigned int max_threads = std::thread::hardware_concurrency();
     // Fallback to 4 threads if hardware_concurrency can't determine
     const unsigned int num_threads = max_threads > 0 ? max_threads : 4;
+    std::cerr << "Threads: " << num_threads << std::endl;
 
      // Prepare a vector to hold thread objects
     std::vector<std::thread> threads;
