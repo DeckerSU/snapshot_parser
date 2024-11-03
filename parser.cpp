@@ -10,6 +10,7 @@
 #include <set>
 #include <algorithm>
 #include <functional>
+#include <unordered_set>
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -167,7 +168,8 @@ int main()
     // https://stackoverflow.com/questions/7868936/read-file-line-by-line-using-ifstream-in-c
     std::ifstream input( "dict.txt" );
     // std::set<std::string> setPasswords;
-    std::vector<std::string> setPasswords;
+    // std::vector<std::string> setPasswords;
+    std::unordered_set<std::string> setPasswords;
     
     {
         // read dictionary
@@ -175,8 +177,8 @@ int main()
         for( std::string line; getline( input, line ); )
         {
             //rtrim(line);
-            // setPasswords.insert(line);
-            setPasswords.push_back(line);
+            setPasswords.insert(line);
+            // setPasswords.push_back(line);
         }
         auto end = std::chrono::steady_clock::now();
 
@@ -184,7 +186,7 @@ int main()
             << " (" << (std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) << " ms)" << std::endl;
     }
 
-    auto worker = [&setPasswords, &mapBalances, &g_display_mutex] (std::vector<std::string>::iterator it_begin, std::vector<std::string>::iterator it_end) {
+    auto worker = [&setPasswords, &mapBalances, &g_display_mutex] (std::unordered_set<std::string>::iterator it_begin, std::unordered_set<std::string>::iterator it_end) {
 
         int64_t n = 0;
         auto start = std::chrono::steady_clock::now();
@@ -196,7 +198,7 @@ int main()
         libbitcoin::system::data_chunk prefix_pubkey_checksum;
         std::string kmd_addr;
 
-        for (std::vector<std::string>::iterator iter = it_begin; iter != it_end; ++iter) 
+        for (std::unordered_set<std::string>::iterator iter = it_begin; iter != it_end; ++iter) 
         {
 
             std::string passphrase = *iter;
